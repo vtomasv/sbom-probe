@@ -70,9 +70,10 @@ La identidad y los reportes pendientes se conservan en `state`.
 
 ## Construir paquetes
 
-Los paquetes de prueba se generan en GitHub Actions en los cambios de `main`.
-Las etiquetas `v*` generan una GitHub Release con los mismos archivos y sus
-hashes. Para construir localmente desde la raíz del repositorio, usa Go (la
+Descarga los seis paquetes y `SHA256SUMS` desde [GitHub Releases](https://github.com/vtomasv/sbom-probe/releases).
+GitHub Actions ejecuta las pruebas y empaqueta cada cambio en `main`. Cuando
+`VERSION` contiene una versión nueva, también publica los paquetes. Las
+etiquetas `v*` permiten publicar versiones desde un commit etiquetado. Para construir localmente desde la raíz del repositorio, usa Go (la
 versión está en `go.mod`), Python 3.9 o posterior y acceso a GitHub:
 
 ```sh

@@ -115,7 +115,7 @@ def build_package(target, release, manifest, cache, dist):
         probe = bundle / ("sbom-probe.exe" if windows else "sbom-probe")
         env = dict(os.environ, CGO_ENABLED="0", GOOS=system, GOARCH=architecture)
         subprocess.run(
-            ["go", "build", "-trimpath", "-o", str(probe), "./cmd/sbom-probe"],
+            ["go", "build", "-trimpath", "-ldflags", f"-X main.version={release}", "-o", str(probe), "./cmd/sbom-probe"],
             cwd=PROJECT,
             env=env,
             check=True,
