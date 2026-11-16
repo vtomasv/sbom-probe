@@ -1,0 +1,16 @@
+dist/
+.cache/
+state/
+.local/
+deployments/
+client.token
+*.token
+*.key
+client.crt
+ca.crt
+server.crt
+config.json
+/sbom-probe
+/sbom-probe.exe
+
+__pycache__/

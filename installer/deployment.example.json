@@ -1,0 +1,18 @@
+{
+  "server_url": "https://sbom.example.com:8443",
+  "client_id": "cliente-a",
+  "ca_file": "ca.crt",
+  "token_file": "client.token",
+  "scan_timeout": "45m",
+  "request_timeout": "2m",
+  "interval": "24h",
+  "metadata": {
+    "group": "servidores-app",
+    "zone": "santiago-1",
+    "department": "plataforma",
+    "tags": {
+      "tipo": "operaciones",
+      "entorno": "produccion"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=SBOM Probe (Anchore Syft)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/sbom-probe/sbom-probe run -config /etc/sbom-probe/config.json -watch
+WorkingDirectory=/etc/sbom-probe
+Restart=on-failure
+RestartSec=15s
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
