@@ -23,7 +23,7 @@ def certificados(tmp):
     def ejecutar(*args):
         subprocess.run([openssl, *args], cwd=tmp, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     ejecutar("req","-x509","-newkey","rsa:2048","-nodes","-subj","/CN=CI CA","-days","2",
-             "-keyout","ca.key","-out","ca.crt","-addext","basicConstraints=critical,CA:TRUE")
+             "-keyout","ca.key","-out","ca.crt","-addext","basicConstraints=critical,CA:TRUE","-addext","keyUsage=critical,keyCertSign,cRLSign")
     for nombre, uso in (("server","serverAuth"),("cliente","clientAuth")):
         ejecutar("req","-new","-newkey","rsa:2048","-nodes","-subj","/CN="+nombre,"-keyout",nombre+".key","-out",nombre+".csr")
         (tmp / "ext").write_text("extendedKeyUsage="+uso+"\nsubjectAltName=IP:127.0.0.1\n")
@@ -31,7 +31,7 @@ def certificados(tmp):
                  "-days","2","-extfile","ext","-out",nombre+".crt")
 
 
-def main(paquete, servidor, evidencia=None):
+def main(paquete, servidor, arquitectura, evidencia=None):
     paquete = str(paquete.resolve())
     token = secrets.token_hex(32)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -100,7 +100,7 @@ def main(paquete, servidor, evidencia=None):
             for vez in (1,2):
                 subprocess.run(orden,check=True,env=env,timeout=120)
                 r, contenido=recibir({str(t[1]) for t in ids})
-                assert r["os"] == ("windows" if WINDOWS else "linux") and r["arch"]=="amd64", r["os"]
+                assert r["os"] == ("windows" if WINDOWS else "linux") and r["arch"]==arquitectura, r["os"]
                 assert r["client_id"]=="acme" and r["metadata"]["group"]=="instaladores"
                 assert r["sbom"]["bomFormat"]=="CycloneDX"
                 componentes=r["sbom"]["components"]
@@ -123,7 +123,8 @@ def main(paquete, servidor, evidencia=None):
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paquete",type=Path)
+    parser.add_argument("--arquitectura",choices=["amd64","arm64"],required=True)
     parser.add_argument("--servidor",type=Path,required=True)
     parser.add_argument("--evidencia",type=Path)
     args=parser.parse_args()
-    main(args.paquete,args.servidor.resolve(),args.evidencia)
+    main(args.paquete,args.servidor.resolve(),args.arquitectura,args.evidencia)

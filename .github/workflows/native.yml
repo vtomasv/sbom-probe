@@ -32,7 +32,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - {os: ubuntu-latest, arch: amd64}
+          - {os: windows-latest, arch: amd64}
+          - {os: ubuntu-24.04-arm, arch: arm64}
+          - {os: windows-11-arm, arch: arm64}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -56,16 +60,16 @@ jobs:
         working-directory: monitor-ci
         run: go build -o ../recolector-ci.exe ./cmd/sbom-server
       - if: runner.os == 'Linux'
-        run: python3 installer/smoke_native.py native/*_amd64.deb --servidor recolector-ci.exe --evidencia reporte.json
+        run: python3 installer/smoke_native.py native/*_${{ matrix.arch }}.deb --arquitectura ${{ matrix.arch }} --servidor recolector-ci.exe --evidencia reporte.json
       - if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $setup = (Get-ChildItem native/*-windows-amd64.exe).FullName
-          python installer/smoke_native.py $setup --servidor recolector-ci.exe --evidencia reporte.json
+          $setup = (Get-ChildItem native/*-windows-${{ matrix.arch }}.exe).FullName
+          python installer/smoke_native.py $setup --arquitectura ${{ matrix.arch }} --servidor recolector-ci.exe --evidencia reporte.json
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: evidencia-${{ runner.os }}
+          name: evidencia-${{ runner.os }}-${{ matrix.arch }}
           path: reporte.json
           if-no-files-found: error
           retention-days: 7
