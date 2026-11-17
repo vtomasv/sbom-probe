@@ -1,0 +1,51 @@
+name: Native installers
+on:
+  push:
+    branches: ['pruebas/sondas-nativas-*']
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.27.4
+          cache: false
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y llvm
+          python3 installer/native.py
+          mv dist/native/SHA256SUMS dist/native/SHA256SUMS-native
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: native-installers
+          path: dist/native/*
+          if-no-files-found: error
+  install:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: native-installers
+          path: native
+      - if: runner.os == 'Linux'
+        run: python3 installer/smoke_native.py native/*_amd64.deb
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem native/*-windows-amd64.exe).FullName
+          python installer/smoke_native.py $setup

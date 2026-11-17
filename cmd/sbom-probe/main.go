@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -23,8 +25,20 @@ func main() {
 }
 
 func execute(args []string) error {
+	if len(args) == 0 && strings.HasPrefix(strings.ToLower(filepath.Base(os.Args[0])), "sbom-probe-setup") {
+		return runSetup(nil)
+	}
+	if len(args) == 1 && args[0] == "uninstall" {
+		return removeSetup()
+	}
+	if len(args) > 0 && args[0] == "install" {
+		return runSetup(args[1:])
+	}
+	if len(args) > 0 && args[0] == "enroll" {
+		return enrollCommand(args[1:])
+	}
 	if len(args) == 0 {
-		return errors.New("uso: sbom-probe init|run -config archivo.json [-watch], o sbom-probe version")
+		return errors.New("uso: sbom-probe enroll -profile equipo.sbom -config archivo.json, sbom-probe init|run -config archivo.json [-watch], o sbom-probe version")
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Println(version)

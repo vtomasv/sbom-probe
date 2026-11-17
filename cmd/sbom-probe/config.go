@@ -26,6 +26,7 @@ type metadata struct {
 }
 
 type configFile struct {
+	InventoryMode  string   `json:"inventory_mode,omitempty"`
 	ServerURL      string   `json:"server_url"`
 	ClientID       string   `json:"client_id"`
 	TokenFile      string   `json:"token_file"`
@@ -81,6 +82,9 @@ func readConfig(path string) (settings, error) {
 }
 
 func (cfg *settings) validate() error {
+	if cfg.InventoryMode != "" && cfg.InventoryMode != "syft" && cfg.InventoryMode != "native" {
+		return errors.New("inventory_mode debe ser native o syft")
+	}
 	endpoint, err := url.Parse(cfg.ServerURL)
 	if err != nil || endpoint.Scheme != "https" || endpoint.Hostname() == "" || endpoint.User != nil ||
 		endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" || endpoint.RawPath != "" ||
