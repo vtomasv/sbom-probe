@@ -78,6 +78,7 @@ func execute(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	retry := time.Minute
 	for {
 		err := collectAndSend(ctx, cfg, id, client, token)
 		if ctx.Err() != nil {
@@ -86,10 +87,15 @@ func execute(args []string) error {
 		if !*watch {
 			return err
 		}
+		delay := cfg.ScanInterval
 		if err != nil {
-			log.Printf("falló el ciclo: %v", err)
+			delay = min(retry, cfg.ScanInterval)
+			retry = min(15*time.Minute, 2*retry)
+			log.Printf("falló el ciclo, nuevo intento en %s: %v", delay, err)
+		} else {
+			retry = time.Minute
 		}
-		timer := time.NewTimer(cfg.ScanInterval)
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

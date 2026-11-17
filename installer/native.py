@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import io
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import tarfile
@@ -44,6 +44,12 @@ MANIFEST = '''<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion
 def tar(entries):
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode="w:gz") as archive:
+        directories = {parent for name, _, _ in entries for parent in PurePosixPath(name).parents if str(parent) != "."}
+        for parent in sorted(directories, key=lambda x: (len(x.parts), str(x))):
+            item = tarfile.TarInfo("./" + str(parent) + "/")
+            item.type, item.mode = tarfile.DIRTYPE, 0o755
+            item.uname = item.gname = "root"
+            archive.addfile(item)
         for name, mode, contents in entries:
             item = tarfile.TarInfo("./" + name)
             item.size, item.mode = len(contents), mode

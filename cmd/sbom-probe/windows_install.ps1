@@ -1,3 +1,4 @@
+$env:PSModulePath = [IO.Path]::Combine($PSHOME,'Modules')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 try {
@@ -33,7 +34,7 @@ try {
     foreach ($sid in @($system,$admin)) {
         $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
     }
-    Set-Acl -LiteralPath $homeDir -AclObject $acl
+    $dir.SetAccessControl($acl)
     $config = Join-Path $homeDir 'config.json'
     $legacy = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SBOM Probe\config.json'
     if (!(Test-Path -LiteralPath $config) -and (Test-Path -LiteralPath $legacy)) { $config = $legacy }
