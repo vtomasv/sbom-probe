@@ -1,16 +1,18 @@
 """Instala y reinstala la sonda en un runner desechable y recibe sus dos inventarios por mTLS."""
 import argparse
-import http.server
+import hashlib
 import json
 import os
 from pathlib import Path
-import queue
+import socket
 import secrets
 import shutil
 import ssl
 import subprocess
 import tempfile
-import threading
+import time
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 import uuid
 
 WINDOWS = os.name == "nt"
@@ -29,35 +31,46 @@ def certificados(tmp):
                  "-days","2","-extfile","ext","-out",nombre+".crt")
 
 
-def main(paquete, evidencia=None):
+def main(paquete, servidor, evidencia=None):
     paquete = str(paquete.resolve())
-    recibidos = queue.Queue()
     token = secrets.token_hex(32)
-    class Recibir(http.server.BaseHTTPRequestHandler):
-        def do_POST(self):
-            if self.path != "/v1/reports" or self.headers.get("Authorization") != "Bearer " + token:
-                self.send_error(403)
-                return
-            contenido = self.rfile.read(int(self.headers["Content-Length"]))
-            reporte = json.loads(contenido)
-            self.send_response(201)
-            self.end_headers()
-            recibidos.put((reporte, contenido))
-        def log_message(self,*args):
-            pass
-
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp=Path(tmpdir)
         certificados(tmp)
-        server=http.server.ThreadingHTTPServer(("127.0.0.1",0), Recibir)
-        ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(tmp/"server.crt",tmp/"server.key")
-        ctx.load_verify_locations(tmp/"ca.crt")
-        ctx.verify_mode=ssl.CERT_REQUIRED
-        server.socket=ctx.wrap_socket(server.socket,server_side=True)
-        threading.Thread(target=server.serve_forever,daemon=True).start()
+        with socket.socket() as disponible:
+            disponible.bind(("127.0.0.1", 0))
+            puerto = disponible.getsockname()[1]
+        origen = f"https://127.0.0.1:{puerto}"
+        config = tmp/"monitor.json"
+        config.write_text(json.dumps({"listen": f"127.0.0.1:{puerto}", "data_dir":str(tmp/"datos"),
+                          "tls_cert":str(tmp/"server.crt"), "tls_key":str(tmp/"server.key"),
+                          "client_ca":str(tmp/"ca.crt"), "admin_token":secrets.token_hex(32), "clients":{"acme":token}}))
+        contexto = ssl.create_default_context(cafile=tmp/"ca.crt")
+        contexto.load_cert_chain(tmp/"cliente.crt",tmp/"cliente.key")
+        def leer(ruta):
+            peticion = Request(origen+ruta, headers={"Authorization":"Bearer "+token})
+            with urlopen(peticion,context=contexto,timeout=5) as respuesta:
+                return respuesta.read()
+        def recibir(vistos):
+            plazo = time.monotonic()+120
+            while time.monotonic()<plazo:
+                for r in json.loads(leer("/v1/reports"))["items"]:
+                    if r["report_id"] in vistos:
+                        continue
+                    rid = r["report_id"]
+                    bruto = leer("/v1/reports/"+rid+"/sbom")
+                    campos = ("schema_version","report_id","machine_id","client_id","collected_at","hostname","os","arch","source","metadata")
+                    sobre = json.dumps({k:r[k] for k in campos},ensure_ascii=False,separators=(",",":"))
+                    for literal,escape in (("&",r"\u0026"),("<",r"\u003c"),(">",r"\u003e"),("\u2028",r"\u2028"),("\u2029",r"\u2029")):
+                        sobre=sobre.replace(literal,escape)
+                    contenido=sobre[:-1].encode()+b',"sbom":'+bruto+b'}'
+                    manifiesto=tmp/"datos/reports"/b"acme".hex()/rid/"manifest.json"
+                    assert hashlib.sha256(contenido).hexdigest()==json.loads(manifiesto.read_bytes())["sha256"], "Difiere la carga original"
+                    return json.loads(contenido),contenido
+                time.sleep(1)
+            raise TimeoutError("El recolector no recibió el inventario")
         perfil=tmp/"equipo.sbom"
-        perfil.write_text(json.dumps({"version":1,"server_url":f"https://127.0.0.1:{server.server_port}",
+        perfil.write_text(json.dumps({"version":1,"server_url":origen,
                         "client_id":"acme","metadata":{"group":"instaladores","tags":{"origen":"runner-ci"}},
                         "ca":(tmp/"ca.crt").read_text(),"certificate":(tmp/"cliente.crt").read_text(),
                         "key":(tmp/"cliente.key").read_text(),"token":token}))
@@ -74,11 +87,19 @@ def main(paquete, evidencia=None):
             subprocess.run(["sudo","dpkg","-i",paquete],check=True)
             orden=["sudo","sbom-probe-activar",str(perfil)]
             esperado="coreutils"
+        monitor=subprocess.Popen([servidor, "-config", config])
         try:
+            for i in range(40):
+                try:
+                    leer("/healthz")
+                    break
+                except URLError:
+                    if monitor.poll() is not None: raise RuntimeError("El recolector terminó")
+                    time.sleep(0.25)
             ids=[]
             for vez in (1,2):
                 subprocess.run(orden,check=True,env=env,timeout=120)
-                r, contenido=recibidos.get(timeout=120)
+                r, contenido=recibir({str(t[1]) for t in ids})
                 assert r["os"] == ("windows" if WINDOWS else "linux") and r["arch"]=="amd64", r["os"]
                 assert r["client_id"]=="acme" and r["metadata"]["group"]=="instaladores"
                 assert r["sbom"]["bomFormat"]=="CycloneDX"
@@ -90,8 +111,8 @@ def main(paquete, evidencia=None):
             if evidencia:
                 evidencia.write_bytes(contenido)
         finally:
-            server.shutdown()
-            server.server_close()
+            monitor.terminate()
+            monitor.wait(timeout=40)
             if WINDOWS:
                 winreg.DeleteKey(winreg.HKEY_LOCAL_MACHINE,llave)
                 subprocess.run([paquete,"uninstall"],env=env,check=True,timeout=60)
@@ -102,6 +123,7 @@ def main(paquete, evidencia=None):
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paquete",type=Path)
+    parser.add_argument("--servidor",type=Path,required=True)
     parser.add_argument("--evidencia",type=Path)
     args=parser.parse_args()
-    main(args.paquete,args.evidencia)
+    main(args.paquete,args.servidor.resolve(),args.evidencia)
