@@ -29,7 +29,7 @@ def certificados(tmp):
                  "-days","2","-extfile","ext","-out",nombre+".crt")
 
 
-def main(paquete):
+def main(paquete, evidencia=None):
     paquete = str(paquete.resolve())
     recibidos = queue.Queue()
     token = secrets.token_hex(32)
@@ -38,10 +38,11 @@ def main(paquete):
             if self.path != "/v1/reports" or self.headers.get("Authorization") != "Bearer " + token:
                 self.send_error(403)
                 return
-            reporte = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            contenido = self.rfile.read(int(self.headers["Content-Length"]))
+            reporte = json.loads(contenido)
             self.send_response(201)
             self.end_headers()
-            recibidos.put(reporte)
+            recibidos.put((reporte, contenido))
         def log_message(self,*args):
             pass
 
@@ -57,7 +58,7 @@ def main(paquete):
         threading.Thread(target=server.serve_forever,daemon=True).start()
         perfil=tmp/"equipo.sbom"
         perfil.write_text(json.dumps({"version":1,"server_url":f"https://127.0.0.1:{server.server_port}",
-                        "client_id":"laboratorio","metadata":{"group":"instaladores"},
+                        "client_id":"acme","metadata":{"group":"instaladores","tags":{"origen":"runner-ci"}},
                         "ca":(tmp/"ca.crt").read_text(),"certificate":(tmp/"cliente.crt").read_text(),
                         "key":(tmp/"cliente.key").read_text(),"token":token}))
         env={**os.environ, "SBOM_SETUP_QUIET":"1"}
@@ -77,15 +78,17 @@ def main(paquete):
             ids=[]
             for vez in (1,2):
                 subprocess.run(orden,check=True,env=env,timeout=120)
-                r=recibidos.get(timeout=120)
+                r, contenido=recibidos.get(timeout=120)
                 assert r["os"] == ("windows" if WINDOWS else "linux") and r["arch"]=="amd64", r["os"]
-                assert r["client_id"]=="laboratorio" and r["metadata"]["group"]=="instaladores"
+                assert r["client_id"]=="acme" and r["metadata"]["group"]=="instaladores"
                 assert r["sbom"]["bomFormat"]=="CycloneDX"
                 componentes=r["sbom"]["components"]
                 assert any(c["name"]==esperado for c in componentes), "Falta el paquete de control"
                 ids.append((uuid.UUID(r["machine_id"]),uuid.UUID(r["report_id"])))
                 print(f"Instalación {vez}: {r['os']} {r['arch']}, {len(componentes)} componentes, mTLS confirmado.",flush=True)
             assert ids[0][0]==ids[1][0] and ids[0][1]!=ids[1][1], "Identidad o repetición incorrecta"
+            if evidencia:
+                evidencia.write_bytes(contenido)
         finally:
             server.shutdown()
             server.server_close()
@@ -99,4 +102,6 @@ def main(paquete):
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paquete",type=Path)
-    main(parser.parse_args().paquete)
+    parser.add_argument("--evidencia",type=Path)
+    args=parser.parse_args()
+    main(args.paquete,args.evidencia)

@@ -43,9 +43,16 @@ jobs:
           name: native-installers
           path: native
       - if: runner.os == 'Linux'
-        run: python3 installer/smoke_native.py native/*_amd64.deb
+        run: python3 installer/smoke_native.py native/*_amd64.deb --evidencia reporte.json
       - if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $setup = (Get-ChildItem native/*-windows-amd64.exe).FullName
-          python installer/smoke_native.py $setup
+          python installer/smoke_native.py $setup --evidencia reporte.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: evidencia-${{ runner.os }}
+          path: reporte.json
+          if-no-files-found: error
+          retention-days: 7
