@@ -31,6 +31,9 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 func scan(ctx context.Context, cfg settings) (json.RawMessage, error) {
+	if cfg.InventoryMode == "native" {
+		return nativeInventory(ctx, cfg.ScanPath)
+	}
 	info, err := os.Stat(cfg.ScanPath)
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("scan_path debe ser un directorio existente: %s", cfg.ScanPath)

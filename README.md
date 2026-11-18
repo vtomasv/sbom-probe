@@ -4,6 +4,19 @@ Sonda multiplataforma que ejecuta [Anchore Syft](https://github.com/anchore/syft
 
 [Instalación de la sonda](installer/README.md)
 
+## Instalación nativa 0.2.0
+
+En **Windows x64 o ARM64** abra el instalador `sbom-probe-setup-0.2.0-windows-<arquitectura>.exe` junto al perfil privado `equipo.sbom` entregado por el administrador del monitor. La tarea **SBOM Probe** envía el primer inventario al instalarse y vuelve a iniciarse en cada arranque.
+
+En **Debian o Ubuntu con systemd** instale el paquete para su arquitectura y active el perfil:
+
+```sh
+sudo apt install ./sbom-probe_0.2.0_amd64.deb
+sudo sbom-probe-activar equipo.sbom
+```
+
+La recolección nativa lee dpkg en Linux y las vistas HKLM de aplicaciones instaladas en Windows. Los inventarios se envían con mTLS y un token del cliente. El perfil y la identidad persisten al actualizar. Una falla de entrega conserva la carga y el servicio vuelve a intentar a intervalos de uno a quince minutos. Para construir los cuatro instaladores ejecute `python3 installer/native.py` con Go y LLVM en PATH. La inscripción también admite `sbom-probe enroll -profile equipo.sbom -config config.json`.
+
 ## Configuración
 
 El instalador recibe un paquete de despliegue con `config.json`, `client.token`, `ca.crt` y los certificados opcionales de cliente. El token identifica al cliente en el servidor y debe mantenerse privado. El certificado del servidor se valida con la CA configurada y el nombre DNS o IP de `server_url`.

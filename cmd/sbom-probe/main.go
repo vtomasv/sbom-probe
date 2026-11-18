@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -23,8 +25,20 @@ func main() {
 }
 
 func execute(args []string) error {
+	if len(args) == 0 && strings.HasPrefix(strings.ToLower(filepath.Base(os.Args[0])), "sbom-probe-setup") {
+		return runSetup(nil)
+	}
+	if len(args) == 1 && args[0] == "uninstall" {
+		return removeSetup()
+	}
+	if len(args) > 0 && args[0] == "install" {
+		return runSetup(args[1:])
+	}
+	if len(args) > 0 && args[0] == "enroll" {
+		return enrollCommand(args[1:])
+	}
 	if len(args) == 0 {
-		return errors.New("uso: sbom-probe init|run -config archivo.json [-watch], o sbom-probe version")
+		return errors.New("uso: sbom-probe enroll -profile equipo.sbom -config archivo.json, sbom-probe init|run -config archivo.json [-watch], o sbom-probe version")
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Println(version)
@@ -64,6 +78,7 @@ func execute(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	retry := time.Minute
 	for {
 		err := collectAndSend(ctx, cfg, id, client, token)
 		if ctx.Err() != nil {
@@ -72,10 +87,15 @@ func execute(args []string) error {
 		if !*watch {
 			return err
 		}
+		delay := cfg.ScanInterval
 		if err != nil {
-			log.Printf("falló el ciclo: %v", err)
+			delay = min(retry, cfg.ScanInterval)
+			retry = min(15*time.Minute, 2*retry)
+			log.Printf("falló el ciclo, nuevo intento en %s: %v", delay, err)
+		} else {
+			retry = time.Minute
 		}
-		timer := time.NewTimer(cfg.ScanInterval)
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
